@@ -14,6 +14,7 @@
           pkgs.python311 
           pkgs.opentofu
           pkgs.minikube
+          pkgs.docker-compose
           ];
         };
       });
