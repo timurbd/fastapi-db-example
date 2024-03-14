@@ -3,17 +3,45 @@ from fastapi import FastAPI, Depends
 from pydantic import BaseModel, ConfigDict
 from typing import List
 from sqlalchemy import Column, Integer, String, create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import sqlalchemy.orm
+from contextlib import asynccontextmanager
+import os
 
-DATABASE_URL = "postgresql://postgres:password@localhost/users"
+# export DATABASE_URL="postgresql://postgres:password@localhost/users" <== 12 factor app
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./users.db")  
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-Base = declarative_base()
+Base = sqlalchemy.orm.declarative_base()
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+def init_db():
+    # Create all tables in the database
+    Base.metadata.create_all(bind=engine)
+    seed_db()
+
+def seed_db():
+    print("Seeding DB")
+    db = SessionLocal()
+
+    # Check if the tables are empty and seed data if they are
+    if db.query(User).count() == 0:
+        users = [
+            User(name='Arjen', age=34),
+        ]
+        db.add_all(users)
+        db.commit()
+
+    db.close()
+
+    
+app = FastAPI(lifespan=lifespan)
 
 # Pydantic model for a user
 class User(Base):
