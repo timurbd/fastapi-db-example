@@ -15,6 +15,7 @@
           pkgs.opentofu
           pkgs.minikube
           pkgs.docker-compose
+          pkgs.act
           ];
         };
       });

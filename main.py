@@ -8,23 +8,27 @@ import sqlalchemy.orm
 from contextlib import asynccontextmanager
 import os
 
-# export DATABASE_URL="postgresql://postgres:password@localhost/users" <== 12 factor app
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./users.db")  
+# export DATABASE_URL="postgresql://postgres:password@localhost/users"
+# ^^ 12 factor app
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./users.db")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = sqlalchemy.orm.declarative_base()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     yield
 
+
 def init_db():
     # Create all tables in the database
     Base.metadata.create_all(bind=engine)
     seed_db()
+
 
 def seed_db():
     print("Seeding DB")
@@ -40,8 +44,9 @@ def seed_db():
 
     db.close()
 
-    
+
 app = FastAPI(lifespan=lifespan)
+
 
 # Pydantic model for a user
 class User(Base):
@@ -49,16 +54,19 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    age = Column(Integer)    
+    age = Column(Integer)
+
 
 # Create the database tables
 Base.metadata.create_all(bind=engine)
+
 
 # Pydantic model for creating a user (without ID)
 class UserCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     name: str
     age: int
+
 
 # Pydantic model for reading a user (includes ID)
 class UserRead(BaseModel):
@@ -67,6 +75,7 @@ class UserRead(BaseModel):
     name: str
     age: int
 
+
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -74,7 +83,8 @@ def get_db():
         yield db
     finally:
         db.close()
-        
+
+
 @app.post("/users/", response_model=UserRead, status_code=201)
 def create_user(user: UserCreate, db=Depends(get_db)):
     db_user = User(name=user.name, age=user.age)
@@ -82,6 +92,7 @@ def create_user(user: UserCreate, db=Depends(get_db)):
     db.commit()
     db.refresh(db_user)
     return db_user
+
 
 @app.get("/users/", response_model=List[UserRead])
 def get_users(db=Depends(get_db)):
