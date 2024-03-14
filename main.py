@@ -1,48 +1,60 @@
 #!/usr/bin/env python3
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, Depends
+from pydantic import BaseModel, ConfigDict
 from typing import List
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+DATABASE_URL = "postgresql://postgres:password@localhost/users"
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
 
 app = FastAPI()
 
 # Pydantic model for a user
-class User(BaseModel):
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    age = Column(Integer)    
+
+# Create the database tables
+Base.metadata.create_all(bind=engine)
+
+# Pydantic model for creating a user (without ID)
+class UserCreate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     name: str
     age: int
 
-# Connect to the PostgreSQL database
-conn = psycopg2.connect(
-    dbname="users", 
-    user="postgres", 
-    password="password", 
-    host="localhost",
-    cursor_factory=RealDictCursor # Allows accessing the results as a dictionary
-)
-cursor = conn.cursor()
+# Pydantic model for reading a user (includes ID)
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    age: int
 
-# Create the users table
-cursor.execute('''
-CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    age INTEGER NOT NULL
-)
-''')
-conn.commit()    
+# Dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+        
+@app.post("/users/", response_model=UserRead, status_code=201)
+def create_user(user: UserCreate, db=Depends(get_db)):
+    db_user = User(name=user.name, age=user.age)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
 
-@app.post("/users/", response_model=User, status_code=201)
-def create_user(user: User):
-    cursor.execute("INSERT INTO users (name, age) VALUES (%s, %s)", (user.name, user.age))
-    conn.commit()    
-    return user
-
-@app.get("/users/", response_model=List[User])
-def get_users():
-    cursor.execute("SELECT * FROM users")
-    users = cursor.fetchall()
-    result = []
-    for u in users:
-        result.append(User(**u))
-    return result
+@app.get("/users/", response_model=List[UserRead])
+def get_users(db=Depends(get_db)):
+    return db.query(User).all()
